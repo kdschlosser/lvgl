@@ -5,6 +5,14 @@ base_path = ''
 xml_path = ''
 
 
+def read_as_xml(d):
+    '''<?xml version='1.0' encoding='UTF-8' standalone='no'?>'''
+    try:
+        return ET.fromstring(d)
+    except:  # NOQA
+        return None
+
+
 def load_xml(fle):
     fle = os.path.join(xml_path, fle + '.xml')
 
@@ -39,6 +47,18 @@ namespaces = {}
 files = {}
 
 
+# things to remove from description
+# <para> </para>
+
+
+class STRUCT_FIELD(object):
+
+    def __init__(self, name, type, description):
+        self.name = name
+        self.type = type
+        self.description = description
+
+
 class STRUCT(object):
     template = '''\
 .. doxygenstruct:: {name}
@@ -61,6 +81,8 @@ class STRUCT(object):
         self.types = set()
         self._deps = None
         self.header_file = ''
+        self.description = ''
+        self.fields = []
 
         root = load_xml(refid)
 
@@ -72,16 +94,41 @@ class STRUCT(object):
                 if child.tag == 'includes':
                     self.header_file = os.path.splitext(child.text)[0]
 
+                if child.tag == 'detaileddescription' and child.text:
+                    self.description = child.text
+
                 if child.tag != 'sectiondef':
                     continue
 
                 for memberdef in child:
                     t = get_type(memberdef)
+                    description = ''
+                    name = ''
+
+                    for element in memberdef:
+                        if element.tag == 'name':
+                            name = element.text
+
+                        if element.tag == 'detaileddescription':
+                            if element.text:
+                                description = element.text
+
+                            for desc_element in element:
+                                if desc_element.text:
+                                    description += '\n' + desc_element.text
+
+                    field = STRUCT_FIELD(name, t, description)
+                    self.fields.append(field)
 
                     if t is None:
                         continue
 
                     self.types.add(t)
+
+    def get_field(self, name):
+        for field in self.fields:
+            if field.name == name:
+                return field
 
     @property
     def deps(self):
@@ -148,12 +195,51 @@ class VARIABLE(object):
     def __init__(self, parent, refid, name, **_):
         if name in variables:
             self.__dict__.update(variables[name].__dict__)
-            return
+        else:
+            variables[name] = self
+            self.parent = parent
+            self.refid = refid
+            self.name = name
+            self.description = ''
+            self.type = ''
 
-        variables[name] = self
-        self.parent = parent
-        self.refid = refid
-        self.name = name
+        if parent is not None:
+            root = load_xml(parent.refid)
+
+            for compounddef in root:
+                if compounddef.attrib['id'] != parent.refid:
+                    continue
+
+                for child in compounddef:
+                    if child.tag != 'sectiondef':
+                        continue
+
+                    if child.attrib['kind'] != 'var':
+                        continue
+
+                    for memberdef in child:
+                        if memberdef.attrib['id'] == refid:
+                            break
+                    else:
+                        continue
+
+                    break
+                else:
+                    continue
+
+                break
+            else:
+                return
+
+            self.type = get_type(memberdef)
+
+            for element in memberdef:
+                if element.tag == 'detaileddescription':
+                    if element.text:
+                        self.description = element.text
+                    for s_element in element:
+                        if s_element.text:
+                            self.description += '\n\n' + s_element.text
 
     def __str__(self):
         return self.template.format(name=self.name)
@@ -183,6 +269,14 @@ class NAMESPACE(object):
         return self.template.format(name=self.name)
 
 
+class FUNC_ARG(object):
+
+    def __init__(self, name, type):
+        self.name = name
+        self.type = type
+        self.description = ''
+
+
 class FUNCTION(object):
     template = '''\
 .. doxygenfunction:: {name}
@@ -192,15 +286,15 @@ class FUNCTION(object):
     def __init__(self, parent, refid, name, **_):
         if name in functions:
             self.__dict__.update(functions[name].__dict__)
-            return
-
-        functions[name] = self
-        self.parent = parent
-        self.refid = refid
-        self.name = name
-        self.types = set()
-        self.restype = None
-        self._deps = None
+        else:
+            functions[name] = self
+            self.parent = parent
+            self.refid = refid
+            self.name = name
+            self.types = set()
+            self.restype = None
+            self.args = []
+            self._deps = None
 
         if parent is not None:
             root = load_xml(parent.refid)
@@ -212,6 +306,7 @@ class FUNCTION(object):
                 for child in compounddef:
                     if child.tag != 'sectiondef':
                         continue
+
                     if child.attrib['kind'] != 'func':
                         continue
 
@@ -237,6 +332,38 @@ class FUNCTION(object):
                     if t is not None:
                         self.types.add(t)
 
+                    for element in child:
+                        if element.tag == 'declname':
+                            arg = FUNC_ARG(element.text, t)
+                            self.args.append(arg)
+
+                if child.tag == 'detaileddescription':
+                    desc = ''
+                    if child.text:
+                        desc = child.text
+
+                    for element in child:
+                        if element.tag == 'para' and element.text:
+                            desc += '\n\n' + element.text
+                        if element.tag == 'parameterlist':
+                            for parameter_item in element:
+                                parameter_name = None
+                                parameter_description = ''
+                                for s_element in parameter_item:
+                                    if s_element.tag == 'parameternamelist':
+                                        parameter_name = s_element[0].text
+
+                                    if s_element.tag == 'parameterdescription':
+                                        if s_element.text:
+                                            parameter_description = s_element.text
+
+                                        for desc_element in s_element:
+                                            if desc_element.text:
+                                                parameter_description += '\n\n' + desc_element.text
+                                if parameter_name is not None:
+                                    for arg in self.args:
+                                        if arg.name == parameter_name:
+                                            arg.description = parameter_description
         if self.restype in self.types:
             self.restype = None
 
@@ -317,13 +444,69 @@ class ENUM(object):
         if name in enums:
             self.__dict__.update(enums[name].__dict__)
             return
+        else:
 
-        enums[name] = self
+            enums[name] = self
 
-        self.parent = parent
-        self.refid = refid
-        self.name = name
-        self.members = []
+            self.parent = parent
+            self.refid = refid
+            self.name = name
+            self.members = []
+
+        if parent is not None:
+            root = load_xml(parent.refid)
+
+            for compounddef in root:
+                if compounddef.attrib['id'] != parent.refid:
+                    continue
+
+                for child in compounddef:
+                    if child.tag != 'sectiondef':
+                        continue
+
+                    if child.attrib['kind'] != 'enum':
+                        continue
+
+                    for memberdef in child:
+                        if memberdef.attrib['id'] == refid:
+                            break
+                    else:
+                        continue
+
+                    break
+                else:
+                    continue
+
+                break
+            else:
+                return
+
+            for element in memberdef:
+                if element.tag == 'detaileddescription':
+                    if element.text:
+                        self.description = element.text
+                    for s_element in element:
+                        if s_element.text:
+                            self.description += '\n\n' + s_element.text
+
+                if element.tag == 'enumvalue':
+                    item_name = None
+                    item_description = ''
+                    for s_element in element:
+                        if s_element.tag == 'name' and s_element.text:
+                            item_name = s_element.text
+                        if s_element.tag == 'detaileddescription':
+                            if s_element.text:
+                                item_description = s_element.text
+
+                            for desc_element in s_element:
+                                if desc_element.text:
+                                    item_description += '\n\n' + desc_element.text
+
+                    if item_name is not None:
+                        for e_item in self.members:
+                            if e_item.name == item_name:
+                                e_item.description = item_description
 
     def is_member(self, member):
         return (
@@ -359,13 +542,49 @@ class DEFINE(object):
     def __init__(self, parent, refid, name, **_):
         if name in defines:
             self.__dict__.update(defines[name].__dict__)
-            return
+        else:
+            defines[name] = self
 
-        defines[name] = self
+            self.parent = parent
+            self.refid = refid
+            self.name = name
+            self.description = ''
 
-        self.parent = parent
-        self.refid = refid
-        self.name = name
+        if parent is not None:
+            root = load_xml(parent.refid)
+
+            for compounddef in root:
+                if compounddef.attrib['id'] != parent.refid:
+                    continue
+
+                for child in compounddef:
+                    if child.tag != 'sectiondef':
+                        continue
+
+                    if child.attrib['kind'] != 'define':
+                        continue
+
+                    for memberdef in child:
+                        if memberdef.attrib['id'] == refid:
+                            break
+                    else:
+                        continue
+
+                    break
+                else:
+                    continue
+
+                break
+            else:
+                return
+
+            for element in memberdef:
+                if element.tag == 'detaileddescription':
+                    if element.text:
+                        self.description = element.text
+                    for s_element in element:
+                        if s_element.text:
+                            self.description += '\n\n' + s_element.text
 
     def __str__(self):
         return self.template.format(name=self.name)
@@ -381,6 +600,7 @@ class ENUMVALUE(object):
         self.parent = parent
         self.refid = refid
         self.name = name
+        self.description = ''
 
     def __str__(self):
         return self.template.format(name=self.name)
@@ -395,15 +615,15 @@ class TYPEDEF(object):
     def __init__(self, parent, refid, name, **_):
         if name in typedefs:
             self.__dict__.update(typedefs[name].__dict__)
-            return
+        else:
+            typedefs[name] = self
 
-        typedefs[name] = self
-
-        self.parent = parent
-        self.refid = refid
-        self.name = name
-        self.type = None
-        self._deps = None
+            self.parent = parent
+            self.refid = refid
+            self.name = name
+            self.type = None
+            self._deps = None
+            self.description = ''
 
         if parent is not None:
             root = load_xml(parent.refid)
@@ -636,6 +856,110 @@ def get_includes(name1, name2, obj, includes):
         return
 
     includes.add((header_file, html_files[header_file]))
+
+
+class XMLSearch(object):
+
+    def __init__(self, temp_directory):
+        global xml_path
+        import config_builder
+        import subprocess
+        import re
+        import sys
+
+        self.config_builder = config_builder
+
+        bp = os.path.abspath(os.path.dirname(__file__))
+
+        cwd = os.getcwd()
+        os.chdir(bp)
+
+        lvgl_path = os.path.abspath(os.path.join(bp, '..'))
+        src_path = os.path.join(lvgl_path, 'src')
+
+        with open('Doxyfile', 'rb') as f:
+            data = f.read().decode('utf-8')
+
+        data = data.replace('#*#*LV_CONF_PATH*#*#', os.path.join(bp, 'lv_conf.h'))
+        data = data.replace('*#*#SRC#*#*', '"{0}"'.format(src_path))
+
+        with open(os.path.join(temp_directory, 'Doxyfile'), 'wb') as f:
+            f.write(data.encode('utf-8'))
+
+        status, br = subprocess.getstatusoutput("git branch")
+        _, gitcommit = subprocess.getstatusoutput("git rev-parse HEAD")
+        br = re.sub('\* ', '', br)
+
+        urlpath = re.sub('release/', '', br)
+
+        os.environ['LVGL_URLPATH'] = urlpath
+        os.environ['LVGL_GITCOMMIT'] = gitcommit
+
+        config_builder.run()
+
+        print("Running doxygen")
+        result = os.system(f'cd "{temp_directory}" && doxygen Doxyfile')
+        if result != 0:
+            sys.exit(result)
+
+        xml_path = os.path.join(bp, 'xml')
+
+        self.index = load_xml('index')
+
+        for compound in self.index:
+            compound.attrib['name'] = compound[0].text.strip()
+            if compound.attrib['kind'] in ('example', 'page', 'dir'):
+                continue
+
+            globals()[compound.attrib['kind'].upper()](
+                None,
+                node=compound,
+                **compound.attrib
+            )
+
+        os.chdir(cwd)
+
+    def get_enum(self, e_name):
+        for enum in enums:
+            for enum_item in enum.members:
+                if enum_item.name == e_name:
+                    return enum_item
+
+    def get_function(self, f_name):
+        for func in functions:
+            if func.name == f_name:
+                return func
+
+        for tdef in typedefs:
+            if tdef.name == f_name:
+                return tdef
+
+    def get_variable(self, v_name):
+        for var in variables:
+            if var.name == v_name:
+                return var
+
+    def get_structure(self, s_name):
+        for struct in structures:
+            if struct.name == s_name:
+                return struct
+
+        for union in unions:
+            if union.name == s_name:
+                return union
+
+        for tdef in typedefs:
+            if tdef.name == s_name:
+                return tdef
+
+    def get_macro(self, m_name):
+        for define in defines:
+            if define.name == m_name:
+                return define
+
+    def close(self):
+        self.config_builder.cleanup()
+
 
 
 def run(project_path, temp_directory, *doc_paths):
