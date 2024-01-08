@@ -36,6 +36,16 @@ extern "C" {
 
 #endif
 
+#ifdef _MSVC_VER
+    #ifdef _DLL
+        #define LV_ATTRIBUTE_EXTERN_DATA __declspec(dllimport)
+    #else
+        #define LV_ATTRIBUTE_EXTERN_DATA __declspec(dllexport)
+    #endif
+#else
+    #define LV_ATTRIBUTE_EXTERN_DATA
+#endif
+
 /**********************
  *      TYPEDEFS
  **********************/
