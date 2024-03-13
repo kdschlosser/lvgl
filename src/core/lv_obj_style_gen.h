@@ -14,6 +14,10 @@
 #include "../misc/lv_style.h"
 #include "../core/lv_obj_style.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 static inline int32_t lv_obj_get_style_width(const lv_obj_t * obj, uint32_t part)
 {
     lv_style_value_t v = lv_obj_get_style_prop(obj, part, LV_STYLE_WIDTH);
@@ -853,5 +857,9 @@ void lv_obj_set_style_grid_cell_y_align(lv_obj_t * obj, lv_grid_align_t value, l
 void lv_obj_set_style_grid_cell_row_span(lv_obj_t * obj, int32_t value, lv_style_selector_t selector);
 #endif /*LV_USE_GRID*/
 
+
+#ifdef __cplusplus
+} /*extern "C"*/
+#endif
 
 #endif /* LV_OBJ_STYLE_GEN_H */

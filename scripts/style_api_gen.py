@@ -627,6 +627,11 @@ print("#include \"../misc/lv_area.h\"")
 print("#include \"../misc/lv_style.h\"")
 print("#include \"../core/lv_obj_style.h\"")
 print()
+print('''\
+#ifdef __cplusplus
+extern "C" {
+#endif
+''')
 
 guard = ""
 for p in props:
@@ -640,6 +645,11 @@ for p in props:
 guard_close()
 
 print()
+print('''\
+#ifdef __cplusplus
+} /*extern "C"*/
+#endif
+''')
 print('#endif /* LV_OBJ_STYLE_GEN_H */')
 
 sys.stdout = open(base_dir + '/../src/core/lv_obj_style_gen.c', 'w')
@@ -670,6 +680,11 @@ print(HEADING)
 print('#ifndef LV_STYLE_GEN_H')
 print('#define LV_STYLE_GEN_H')
 print()
+print('''\
+#ifdef __cplusplus
+extern "C" {
+#endif
+''')
 
 for p in props:
   guard_proc(p)
@@ -682,6 +697,11 @@ for p in props:
 guard_close()
 
 print()
+print('''\
+#ifdef __cplusplus
+} /*extern "C"*/
+#endif
+''')
 print('#endif /* LV_STYLE_GEN_H */')
 
 sys.stdout = open(base_dir + '/../docs/overview/style-props.md', 'w')

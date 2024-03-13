@@ -1,6 +1,10 @@
 #ifndef GIFDEC_H
 #define GIFDEC_H
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include <stdint.h>
 #include "../../misc/lv_fs.h"
 
@@ -57,6 +61,11 @@ void gd_render_frame(gd_GIF * gif, uint8_t * buffer);
 int gd_get_frame(gd_GIF * gif);
 void gd_rewind(gd_GIF * gif);
 void gd_close_gif(gd_GIF * gif);
+
+#ifdef __cplusplus
+} /*extern "C"*/
+#endif
+
 
 #endif /*LV_USE_GIF*/
 
