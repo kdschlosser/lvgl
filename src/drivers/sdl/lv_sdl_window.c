@@ -44,6 +44,15 @@ typedef struct {
 #endif
     uint8_t zoom;
     uint8_t ignore_size_chg;
+    uint8_t *buffer_to_flush;
+    lv_area_t *area_to_flush;
+    bool exit_flush_thread;
+
+#if LV_SDL_BUF_COUNT == 2
+    SDL_mutex *flush_mutex;
+    SDL_Thread *flush_thread;
+#endif
+
 } lv_sdl_window_t;
 
 /**********************
@@ -66,6 +75,7 @@ void _lv_sdl_mouse_handler(SDL_Event * event);
 void _lv_sdl_mousewheel_handler(SDL_Event * event);
 void _lv_sdl_keyboard_handler(SDL_Event * event);
 static void res_chg_event_cb(lv_event_t * e);
+static int flush_loop(lv_display_t * disp);
 
 static bool inited = false;
 
@@ -84,7 +94,7 @@ static lv_timer_t * event_handler_timer;
  *   GLOBAL FUNCTIONS
  **********************/
 
-lv_display_t * lv_sdl_window_create(int32_t hor_res, int32_t ver_res)
+lv_display_t * lv_sdl_window_create(int32_t hor_res, int32_t ver_res, )
 {
     if(!inited) {
         SDL_Init(SDL_INIT_VIDEO);
@@ -115,8 +125,15 @@ lv_display_t * lv_sdl_window_create(int32_t hor_res, int32_t ver_res)
     lv_display_set_driver_data(disp, dsc);
     window_create(disp);
 
-    lv_display_set_flush_cb(disp, flush_cb);
+    lv_display_set_flush_cb(disp, flush_cb)
 
+
+    flush_thread
+    flush_mutex = SDL_CreateMutex();
+    SDL_LockMutex(self->panel_io_config.mutex);
+    exit_flush_thread
+
+    flush_loop
 #if LV_USE_DRAW_SDL == 0
     if(LV_SDL_RENDER_MODE == LV_DISPLAY_RENDER_MODE_PARTIAL) {
         dsc->buf1 = malloc(32 * 1024);
@@ -207,80 +224,117 @@ void lv_sdl_quit()
  *   STATIC FUNCTIONS
  **********************/
 
-static void flush_cb(lv_display_t * disp, const lv_area_t * area, uint8_t * px_map)
+static int flush_loop(lv_display_t * disp)
 {
-#if LV_USE_DRAW_SDL == 0
     lv_sdl_window_t * dsc = lv_display_get_driver_data(disp);
-    lv_color_format_t cf = lv_display_get_color_format(disp);
 
-    if(LV_SDL_RENDER_MODE == LV_DISPLAY_RENDER_MODE_PARTIAL) {
-        lv_display_rotation_t rotation = lv_display_get_rotation(disp);
-        uint32_t px_size = lv_color_format_get_size(cf);
+#if LV_USE_DRAW_SDL == 0
+    const lv_area_t * area
+    uint8_t * px_map
+#endif
 
-        if(rotation != LV_DISPLAY_ROTATION_0) {
-            int32_t w = lv_area_get_width(area);
-            int32_t h = lv_area_get_height(area);
-            uint32_t w_stride = lv_draw_buf_width_to_stride(w, cf);
-            uint32_t h_stride = lv_draw_buf_width_to_stride(h, cf);
-            size_t buf_size = w * h * px_size;
-
-            /* (Re)allocate temporary buffer if needed */
-            if(!dsc->rotated_buf || dsc->rotated_buf_size != buf_size) {
-                dsc->rotated_buf = realloc(dsc->rotated_buf, buf_size);
-                dsc->rotated_buf_size = buf_size;
-            }
-
-            switch(rotation) {
-                case LV_DISPLAY_ROTATION_0:
-                    break;
-                case LV_DISPLAY_ROTATION_90:
-                    lv_draw_sw_rotate(px_map, dsc->rotated_buf, w, h, w_stride, h_stride, rotation, cf);
-                    break;
-                case LV_DISPLAY_ROTATION_180:
-                    lv_draw_sw_rotate(px_map, dsc->rotated_buf, w, h, w_stride, w_stride, rotation, cf);
-                    break;
-                case LV_DISPLAY_ROTATION_270:
-                    lv_draw_sw_rotate(px_map, dsc->rotated_buf, w, h, w_stride, h_stride, rotation, cf);
-                    break;
-            }
-
-            px_map = dsc->rotated_buf;
-
-            lv_display_rotate_area(disp, (lv_area_t *)area);
-        }
-
-        uint32_t px_map_stride = lv_draw_buf_width_to_stride(lv_area_get_width(area), cf);
-        uint32_t px_map_line_bytes = lv_area_get_width(area) * px_size;
-
-        uint8_t * fb_tmp = dsc->fb_act;
-        uint32_t fb_stride = disp->hor_res * px_size;
-        fb_tmp += area->y1 * fb_stride;
-        fb_tmp += area->x1 * px_size;
-
-        int32_t y;
-        for(y = area->y1; y <= area->y2; y++) {
-            lv_memcpy(fb_tmp, px_map, px_map_line_bytes);
-            px_map += px_map_stride;
-            fb_tmp += fb_stride;
-        }
-    }
-
-    /* TYPICALLY YOU DO NOT NEED THIS
-     * If it was the last part to refresh update the texture of the window.*/
-    if(lv_display_flush_is_last(disp)) {
-        if(LV_SDL_RENDER_MODE != LV_DISPLAY_RENDER_MODE_PARTIAL) {
-            dsc->fb_act = px_map;
-        }
-        window_update(disp);
-    }
+#if LV_SDL_BUF_COUNT == 2
+    while (!dsc->exit_flush_thread) {
+        SDL_LockMutex(dsc->flush_mutex);
 #else
-    if(lv_display_flush_is_last(disp)) {
-        window_update(disp);
-    }
+    if (!dsc->exit_flush_thread) {
+#endif
+
+#if LV_USE_DRAW_SDL == 0
+        px_map = dsc->buffer_to_flush;
+
+        if (px_map != NULL) {
+            area = dsc->area_to_flush;
+
+            lv_color_format_t cf = lv_display_get_color_format(disp);
+
+            if(LV_SDL_RENDER_MODE == LV_DISPLAY_RENDER_MODE_PARTIAL) {
+                lv_display_rotation_t rotation = lv_display_get_rotation(disp);
+                uint32_t px_size = lv_color_format_get_size(cf);
+
+                if(rotation != LV_DISPLAY_ROTATION_0) {
+                    int32_t w = lv_area_get_width(area);
+                    int32_t h = lv_area_get_height(area);
+                    uint32_t w_stride = lv_draw_buf_width_to_stride(w, cf);
+                    uint32_t h_stride = lv_draw_buf_width_to_stride(h, cf);
+                    size_t buf_size = w * h * px_size;
+
+                    /* (Re)allocate temporary buffer if needed */
+                    if(!dsc->rotated_buf || dsc->rotated_buf_size != buf_size) {
+                        dsc->rotated_buf = realloc(dsc->rotated_buf, buf_size);
+                        dsc->rotated_buf_size = buf_size;
+                    }
+
+                    switch(rotation) {
+                        case LV_DISPLAY_ROTATION_0:
+                            break;
+                        case LV_DISPLAY_ROTATION_90:
+                            lv_draw_sw_rotate(px_map, dsc->rotated_buf, w, h, w_stride, h_stride, rotation, cf);
+                            break;
+                        case LV_DISPLAY_ROTATION_180:
+                            lv_draw_sw_rotate(px_map, dsc->rotated_buf, w, h, w_stride, w_stride, rotation, cf);
+                            break;
+                        case LV_DISPLAY_ROTATION_270:
+                            lv_draw_sw_rotate(px_map, dsc->rotated_buf, w, h, w_stride, h_stride, rotation, cf);
+                            break;
+                    }
+
+                    px_map = dsc->rotated_buf;
+
+                    lv_display_rotate_area(disp, (lv_area_t *)area);
+                }
+
+                uint32_t px_map_stride = lv_draw_buf_width_to_stride(lv_area_get_width(area), cf);
+                uint32_t px_map_line_bytes = lv_area_get_width(area) * px_size;
+
+                uint8_t * fb_tmp = dsc->fb_act;
+                uint32_t fb_stride = disp->hor_res * px_size;
+                fb_tmp += area->y1 * fb_stride;
+                fb_tmp += area->x1 * px_size;
+
+                int32_t y;
+                for(y = area->y1; y <= area->y2; y++) {
+                    lv_memcpy(fb_tmp, px_map, px_map_line_bytes);
+                    px_map += px_map_stride;
+                    fb_tmp += fb_stride;
+                }
+            }
+
+            /* TYPICALLY YOU DO NOT NEED THIS
+             * If it was the last part to refresh update the texture of the window.*/
+            if(lv_display_flush_is_last(disp)) {
+                if(LV_SDL_RENDER_MODE != LV_DISPLAY_RENDER_MODE_PARTIAL) {
+                    dsc->fb_act = px_map;
+                }
+
+                window_update(disp);
+            }
+        }
+#else
+        if(lv_display_flush_is_last(disp)) {
+            window_update(disp);
+        }
 #endif /*LV_USE_DRAW_SDL == 0*/
 
-    /*IMPORTANT! It must be called to tell the system the flush is ready*/
-    lv_display_flush_ready(disp);
+        /*IMPORTANT! It must be called to tell the system the flush is ready*/
+        lv_display_flush_ready(disp);
+    }
+}
+
+
+static void flush_cb(lv_display_t * disp, const lv_area_t * area, uint8_t * px_map)
+{
+
+    lv_sdl_window_t * dsc = lv_display_get_driver_data(disp);
+    dsc->buffer_to_flush = px_map;
+    dsc->area_to_flush = area;
+
+#if LV_SDL_BUF_COUNT == 2
+    SDL_UnlockMutex(dsc->flush_mutex);
+#else
+    flush_loop(disp);
+#endif
+
 }
 
 /**
@@ -440,13 +494,20 @@ static void res_chg_event_cb(lv_event_t * e)
 
 static void release_disp_cb(lv_event_t * e)
 {
+    lv_display_t * disp = (lv_display_t *) lv_event_get_user_data(e);
+    lv_sdl_window_t * dsc = lv_display_get_driver_data(disp);
+
+#if LV_SDL_BUF_COUNT == 2
+    dsc->buffer_to_flush = NULL;
+    dsc->exit_flush_thread = true;
+    SDL_UnlockMutex(dsc->flush_mutex);
+    SDL_WaitThread(dsc->flush_thread, NULL);
+#endif
+
     if(lv_deinit_in_progress) {
         lv_sdl_quit();
     }
 
-    lv_display_t * disp = (lv_display_t *) lv_event_get_user_data(e);
-
-    lv_sdl_window_t * dsc = lv_display_get_driver_data(disp);
 #if LV_USE_DRAW_SDL == 0
     SDL_DestroyTexture(dsc->texture);
 #endif
