@@ -1,5 +1,5 @@
 /**
- * @file lv_buttonnmatrix.h
+ * @file lv_buttonmatrix.h
  *
  */
 
