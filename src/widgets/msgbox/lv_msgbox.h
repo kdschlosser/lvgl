@@ -1,5 +1,5 @@
 /**
- * @file lv_mbox.h
+ * @file lv_msgbox.h
  *
  */
 

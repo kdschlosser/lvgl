@@ -67,4 +67,4 @@ struct _lv_draw_vg_lite_unit_t {
 } /*extern "C"*/
 #endif
 
-#endif /*LV_VG_LITE_DRAW_H*/
+#endif /*LV_DRAW_VG_LITE_TYPE_H*/
