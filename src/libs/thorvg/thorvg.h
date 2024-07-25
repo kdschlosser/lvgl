@@ -1062,7 +1062,7 @@ public:
      * @param[in] miterlimit The miterlimit imposes a limit on the extent of the stroke join, when the @c StrokeJoin::Miter join style is set. The default value is 4.
      *
      * @retval Result::Success when succeed, Result::NonSupport unsupported value, Result::FailedAllocation otherwise.
-     * 
+     *
      * @since 0.11
      */
     Result strokeMiterlimit(float miterlimit) noexcept;
@@ -1346,11 +1346,9 @@ public:
      * when the @p copy has @c false. This means that loading the same data again will not result in duplicate operations
      * for the sharable @p data. Instead, ThorVG will reuse the previously loaded picture data.
      *
-     * @param[in] paint A Tvg_Paint pointer to the picture object.
      * @param[in] data A pointer to a memory location where the content of the picture raw data is stored.
      * @param[in] w The width of the image @p data in pixels.
      * @param[in] h The height of the image @p data in pixels.
-     * @param[in] premultiplied If @c true, the given image data is alpha-premultiplied.
      * @param[in] copy If @c true the data are copied into the engine local buffer, otherwise they are not.
      *
      * @retval Result::Success When succeed, Result::InsufficientCondition otherwise.

@@ -79,8 +79,6 @@ static inline lv_color32_t lv_color_mix32(lv_color32_t fg, lv_color32_t bg)
     return bg;
 }
 
-//! @endcond
-
 /**
  * Get the brightness of a color
  * @param c   a color
